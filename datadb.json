@@ -1,0 +1,17 @@
+{
+    "1234-567-890": {
+        "name": "BookA",
+        "price": 100,
+        "quantity": 10
+    },
+    "2345-678-901": {
+        "name": "BookB",
+        "price": 200,
+        "quantity": 20
+    },
+    "3456-789-012": {
+        "name": "BookC",
+        "price": 300,
+        "quantity": 30
+    }
+}
