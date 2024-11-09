@@ -1,20 +1,44 @@
 # main.py
-
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response, Header, Request, status
 import uuid, json
 from model import LoginInfo
 from typing import Annotated
+import uvicorn
 
-app = FastAPI()
 
-userdb_conn = open("userdb.json", "r+")
-userdb = json.loads(userdb_conn.read())
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    ####### Startup events ########
+    userdb_conn = open("userdb.json", "r+")
+    userdb = json.loads(userdb_conn.read())
+    bookdb_conn = open("bookdb.json", "r+")
+    bookdb = json.loads(bookdb_conn.read())
+    yield
+    ####### Shutdown events ########
+    print("Shutting down the server")
+    print("Saving userdb")
+    userdb_conn.seek(0)
+    print("clearing session tokens")
+    for user in userdb:
+        if user.get("session_token"):
+            print(f"Clearing session token for {user['username']}")
+            del user["session_token"]
+    userdb_conn.write(json.dumps(userdb, indent=4))
+    userdb_conn.truncate()
+    userdb_conn.close()
 
-bookdb_conn = open("bookdb.json", "r+")
-bookdb = json.loads(bookdb_conn.read())
+    print("Saving bookdb")
+    bookdb_conn.seek(0)
+    bookdb_conn.write(json.dumps(bookdb, indent=4))
+    bookdb_conn.truncate()
+    bookdb_conn.close()
 
-temp_sessions = {}
 
+app = FastAPI(lifespan=lifespan)
+
+
+# Login API
 @app.post("/login", status_code=200)
 async def login(login_info: LoginInfo, response: Response):
     for user in userdb:
@@ -33,6 +57,7 @@ async def login(login_info: LoginInfo, response: Response):
     return {"message": "Login failed"}
 
 
+# Get all books API
 @app.get("/books", status_code=200)
 async def get_books(response: Response, request: Request):
     bearer_token = request.headers.get("Authorization")
@@ -47,6 +72,7 @@ async def get_books(response: Response, request: Request):
     return {"message": "Unauthorized"}
 
 
+# Get book by ISBN API
 @app.get("/book/{isbn}", status_code=200)
 async def get_book(isbn: str, response: Response, request: Request):
     bearer_token = request.headers.get("Authorization")
@@ -63,7 +89,9 @@ async def get_book(isbn: str, response: Response, request: Request):
     response.status_code = status.HTTP_401_UNAUTHORIZED
     return {"message": "Unauthorized"}
 
-@app.post("/book/{isbn}", status_code=201)
+
+# Add book API
+@app.put("/book/{isbn}", status_code=201)
 async def add_book(isbn: str, request: Request, response: Response):
     bearer_token = request.headers.get("Authorization")
     if not bearer_token:
@@ -71,7 +99,7 @@ async def add_book(isbn: str, request: Request, response: Response):
         return {"message": "Unauthorized"}
     session_token = bearer_token.split(" ")[1]
     for user in userdb:
-        if user.get("session_token") == session_token:
+        if user.get("session_token") == session_token and user["role"] == "admin":
             if isbn in bookdb:
                 response.status_code = status.HTTP_409_CONFLICT
                 return {"message": "Book already exists"}
@@ -81,22 +109,26 @@ async def add_book(isbn: str, request: Request, response: Response):
     response.status_code = status.HTTP_401_UNAUTHORIZED
     return {"message": "Unauthorized"}
 
-@app.on_event("shutdown")
-def shutdown_event():
-    print("Shutting down the server")
-    print("Saving userdb")
-    userdb_conn.seek(0)
-    print("clearing session tokens")
-    for user in userdb:
-        if user.get("session_token"):
-            print(f"Clearing session token for {user['username']}")
-            del user["session_token"]
-    userdb_conn.write(json.dumps(userdb, indent=4))
-    userdb_conn.truncate()
-    userdb_conn.close()
 
-    print("Saving bookdb")
-    bookdb_conn.seek(0)
-    bookdb_conn.write(json.dumps(bookdb, indent=4))
-    bookdb_conn.truncate()
-    bookdb_conn.close()
+# @app.on_event("shutdown")
+# def shutdown_event():
+#     print("Shutting down the server")
+#     print("Saving userdb")
+#     userdb_conn.seek(0)
+#     print("clearing session tokens")
+#     for user in userdb:
+#         if user.get("session_token"):
+#             print(f"Clearing session token for {user['username']}")
+#             del user["session_token"]
+#     userdb_conn.write(json.dumps(userdb, indent=4))
+#     userdb_conn.truncate()
+#     userdb_conn.close()
+
+#     print("Saving bookdb")
+#     bookdb_conn.seek(0)
+#     bookdb_conn.write(json.dumps(bookdb, indent=4))
+#     bookdb_conn.truncate()
+#     bookdb_conn.close()
+
+if __name__ == "__main__":
+    uvicorn.run(app, port=8000, host="127.0.0.1")

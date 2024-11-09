@@ -4,5 +4,11 @@
         "password": "admin",
         "email": "admin@localhost.localdomain",
         "role": "admin"
+    },
+    {
+        "username": "user1",
+        "password": "user1",
+        "email": "user1@localhost.localdomain",
+        "role": "user"
     }
 ]
