@@ -21,10 +21,6 @@ bookdb = {
 }
 
 
-@app.get("/", status_code=401)
-async def root():
-    return {"message": "OK"}
-
 
 @app.post("/login", status_code=200)
 async def login(login_info: LoginInfo, response: Response):
