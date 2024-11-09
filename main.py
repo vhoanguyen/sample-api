@@ -1,10 +1,8 @@
 # main.py
-from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response, Header, Request, status
 import uuid, json
 from model import LoginInfo, BookInfo
 from typing import Annotated
-import uvicorn
 
 ####### Global Variables ########
 app = FastAPI()
