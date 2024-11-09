@@ -1,26 +1,19 @@
 # main.py
 
 from fastapi import FastAPI, Response, Header, Request, status
-import uuid
+import uuid, json
 from model import LoginInfo
 from typing import Annotated
 
 app = FastAPI()
-userdb = [
-    {
-        "username": "admin",
-        "password": "admin",
-        "email": "admin@localhost.localdomain",
-        "role": "admin",
-    }
-]
-bookdb = {
-    "1234-567-890": {"name": "BookA", "price": 100, "quantity": 10},
-    "2345-678-901": {"name": "BookB", "price": 200, "quantity": 20},
-    "3456-789-012": {"name": "BookC", "price": 300, "quantity": 30},
-}
 
+userdb_conn = open("userdb.json", "r+")
+userdb = json.loads(userdb_conn.read())
 
+bookdb_conn = open("bookdb.json", "r+")
+bookdb = json.loads(bookdb_conn.read())
+
+temp_sessions = {}
 
 @app.post("/login", status_code=200)
 async def login(login_info: LoginInfo, response: Response):
@@ -69,3 +62,41 @@ async def get_book(isbn: str, response: Response, request: Request):
             return {"message": "Book not found"}
     response.status_code = status.HTTP_401_UNAUTHORIZED
     return {"message": "Unauthorized"}
+
+@app.post("/book/{isbn}", status_code=201)
+async def add_book(isbn: str, request: Request, response: Response):
+    bearer_token = request.headers.get("Authorization")
+    if not bearer_token:
+        response.status_code = status.HTTP_401_UNAUTHORIZED
+        return {"message": "Unauthorized"}
+    session_token = bearer_token.split(" ")[1]
+    for user in userdb:
+        if user.get("session_token") == session_token:
+            if isbn in bookdb:
+                response.status_code = status.HTTP_409_CONFLICT
+                return {"message": "Book already exists"}
+            book_info = await request.json()
+            bookdb[isbn] = book_info
+            return {"message": "Book added successfully"}
+    response.status_code = status.HTTP_401_UNAUTHORIZED
+    return {"message": "Unauthorized"}
+
+@app.on_event("shutdown")
+def shutdown_event():
+    print("Shutting down the server")
+    print("Saving userdb")
+    userdb_conn.seek(0)
+    print("clearing session tokens")
+    for user in userdb:
+        if user.get("session_token"):
+            print(f"Clearing session token for {user['username']}")
+            del user["session_token"]
+    userdb_conn.write(json.dumps(userdb, indent=4))
+    userdb_conn.truncate()
+    userdb_conn.close()
+
+    print("Saving bookdb")
+    bookdb_conn.seek(0)
+    bookdb_conn.write(json.dumps(bookdb, indent=4))
+    bookdb_conn.truncate()
+    bookdb_conn.close()

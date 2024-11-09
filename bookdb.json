@@ -13,5 +13,15 @@
         "name": "BookC",
         "price": 300,
         "quantity": 30
+    },
+    "999-123-0098": {
+        "name": "BookD",
+        "price": 200,
+        "quantity": 20
+    },
+    "111-123-0098": {
+        "name": "bookF",
+        "price": 100,
+        "quantity": 23
     }
 }
