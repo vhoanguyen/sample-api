@@ -1,7 +1,7 @@
 # main.py
 from fastapi import FastAPI, Response, Header, Request, status
 import uuid, json
-from model import LoginInfo, BookInfo
+from model import LoginInfo, BookInfo, Role
 from typing import Annotated
 
 ####### Global Variables ########
@@ -73,7 +73,7 @@ async def add_book(isbn: str, book_info: BookInfo,  request: Request, response: 
         return {"message": "Unauthorized"}
     session_token = bearer_token.split(" ")[1]
     for user in userdb:
-        if user.get("session_token") == session_token and user["role"] == "admin":
+        if user.get("session_token") == session_token and user["role"] == Role.ADMIN:
             if isbn in bookdb:
                 response.status_code = status.HTTP_409_CONFLICT
                 return {"message": "Book already exists"}
@@ -82,6 +82,27 @@ async def add_book(isbn: str, book_info: BookInfo,  request: Request, response: 
             return {"message": "Book added successfully"}
     response.status_code = status.HTTP_401_UNAUTHORIZED
     return {"message": "Unauthorized"}
+
+
+# Update book API
+@app.patch("/book/{isbn}", status_code=200)
+async def update_book(isbn: str, book_info: BookInfo, request: Request, response: Response):
+    bearer_token = request.headers.get("Authorization")
+    if not bearer_token:
+        response.status_code = status.HTTP_401_UNAUTHORIZED
+        return {"message": "Unauthorized"}
+    session_token = bearer_token.split(" ")[1]
+    for user in userdb:
+        if user.get("session_token") == session_token and user["role"] == Role.ADMIN:
+            if isbn not in bookdb:
+                response.status_code = status.HTTP_404_NOT_FOUND
+                return {"message": "Book not found"}
+            book_info = await request.json()
+            bookdb[isbn] = book_info
+            return {"message": "Book updated successfully"}
+    response.status_code = status.HTTP_401_UNAUTHORIZED
+    return {"message": "Unauthorized"}
+
 
 # SHUTDOWN EVENT
 @app.on_event("shutdown")
