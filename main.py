@@ -2,40 +2,16 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response, Header, Request, status
 import uuid, json
-from model import LoginInfo
+from model import LoginInfo, BookInfo
 from typing import Annotated
 import uvicorn
 
-
-@asynccontextmanager
-async def lifespan(application: FastAPI):
-    ####### Startup events ########
-    userdb_conn = open("userdb.json", "r+")
-    userdb = json.loads(userdb_conn.read())
-    bookdb_conn = open("bookdb.json", "r+")
-    bookdb = json.loads(bookdb_conn.read())
-    yield
-    ####### Shutdown events ########
-    print("Shutting down the server")
-    print("Saving userdb")
-    userdb_conn.seek(0)
-    print("clearing session tokens")
-    for user in userdb:
-        if user.get("session_token"):
-            print(f"Clearing session token for {user['username']}")
-            del user["session_token"]
-    userdb_conn.write(json.dumps(userdb, indent=4))
-    userdb_conn.truncate()
-    userdb_conn.close()
-
-    print("Saving bookdb")
-    bookdb_conn.seek(0)
-    bookdb_conn.write(json.dumps(bookdb, indent=4))
-    bookdb_conn.truncate()
-    bookdb_conn.close()
-
-
-app = FastAPI(lifespan=lifespan)
+####### Global Variables ########
+app = FastAPI()
+userdb_conn = open("userdb.json", "r+")
+userdb = json.loads(userdb_conn.read())
+bookdb_conn = open("bookdb.json", "r+")
+bookdb = json.loads(bookdb_conn.read())
 
 
 # Login API
@@ -92,7 +68,7 @@ async def get_book(isbn: str, response: Response, request: Request):
 
 # Add book API
 @app.put("/book/{isbn}", status_code=201)
-async def add_book(isbn: str, request: Request, response: Response):
+async def add_book(isbn: str, book_info: BookInfo,  request: Request, response: Response):
     bearer_token = request.headers.get("Authorization")
     if not bearer_token:
         response.status_code = status.HTTP_401_UNAUTHORIZED
@@ -109,26 +85,26 @@ async def add_book(isbn: str, request: Request, response: Response):
     response.status_code = status.HTTP_401_UNAUTHORIZED
     return {"message": "Unauthorized"}
 
+# SHUTDOWN EVENT
+@app.on_event("shutdown")
+def shutdown_event():
+    print("Shutting down the server")
+    print("Saving userdb")
+    userdb_conn.seek(0)
+    print("clearing session tokens")
+    for user in userdb:
+        if user.get("session_token"):
+            print(f"Clearing session token for {user['username']}")
+            del user["session_token"]
+    userdb_conn.write(json.dumps(userdb, indent=4))
+    userdb_conn.truncate()
+    userdb_conn.close()
 
-# @app.on_event("shutdown")
-# def shutdown_event():
-#     print("Shutting down the server")
-#     print("Saving userdb")
-#     userdb_conn.seek(0)
-#     print("clearing session tokens")
-#     for user in userdb:
-#         if user.get("session_token"):
-#             print(f"Clearing session token for {user['username']}")
-#             del user["session_token"]
-#     userdb_conn.write(json.dumps(userdb, indent=4))
-#     userdb_conn.truncate()
-#     userdb_conn.close()
-
-#     print("Saving bookdb")
-#     bookdb_conn.seek(0)
-#     bookdb_conn.write(json.dumps(bookdb, indent=4))
-#     bookdb_conn.truncate()
-#     bookdb_conn.close()
+    print("Saving bookdb")
+    bookdb_conn.seek(0)
+    bookdb_conn.write(json.dumps(bookdb, indent=4))
+    bookdb_conn.truncate()
+    bookdb_conn.close()
 
 if __name__ == "__main__":
     uvicorn.run(app, port=8000, host="127.0.0.1")
