@@ -5,7 +5,7 @@ class LoginInfo(BaseModel):
     username: str
     password: str
 
-class BookInfo(BaseModel):
+class PartInfo(BaseModel):
     name: str
     price: int
     quantity: int
