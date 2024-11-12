@@ -5,7 +5,8 @@ pip install -r requirements.txt
 
 ## Run
 ```bash
-uvicorn main:app --reload
+uvicorn main:app --reload --ssl-certfile server.crt --ssl-keyfile server.key
+
 ```
 
 ## How to use
