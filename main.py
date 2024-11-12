@@ -28,7 +28,6 @@ async def login(login_info: schemas.LoginInfo, response: Response):
                     + timedelta(minutes=schemas.ValidTime.THIRTY_MINUTES),
                 }
             )
-            print(_user_response)
             user.update(_user_response)
             return _user_response.model_dump()
     response.status_code = status.HTTP_401_UNAUTHORIZED
@@ -162,3 +161,8 @@ def shutdown_event():
     parts_db_conn.write(json.dumps(parts_db, indent=4))
     parts_db_conn.truncate()
     parts_db_conn.close()
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="127.0.0.1", port=8000, ssl_certfile="server.crt", ssl_keyfile="server.key")
