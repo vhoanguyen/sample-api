@@ -10,11 +10,11 @@ uvicorn main:app --reload --ssl-certfile server.crt --ssl-keyfile server.key
 ```
 
 ## How to use
- DOC http://127.0.0.1:8000/docs
+ DOC https://127.0.0.1:8000/docs
  1. Login
    ```bash
       curl -X 'POST' \
-      'http://127.0.0.1:8000/login' \
+      'https://127.0.0.1:8000/login' \
       -H 'accept: application/json' \
       -H 'Content-Type: application/json' \
       -d '{
@@ -25,21 +25,21 @@ uvicorn main:app --reload --ssl-certfile server.crt --ssl-keyfile server.key
  2. Get all books
    ```bash
       curl -X 'GET' \
-      'http://127.0.0.1:8000/books' \
+      'https://127.0.0.1:8000/books' \
       -H 'accept: application/json' \
       -H 'Authorization: Bearer XXX-YYY-ZZZ' \
    ```
  3. Get a single book
    ```bash
       curl -X 'GET' \
-      'http://127.0.0.1:8000/book/{isbn}' \
+      'https://127.0.0.1:8000/book/{isbn}' \
       -H 'accept: application/json' \
       -H 'Authorization: Bearer XXX-YYY-ZZZ' \
    ```
  4. Add a new book
    ```bash
       curl -X 'PUT' \
-      'http://127.0.0.1:8000/book/asdfa' \
+      'https://127.0.0.1:8000/book/asdfa' \
       -H 'accept: application/json' \
       -H 'Content-Type: application/json' \
       -H 'Authorization: Bearer XXX-YYY-ZZZ' \
