@@ -2,12 +2,12 @@
     "1234-567-890": {
         "name": "BookA",
         "price": 100,
-        "quantity": 19
+        "quantity": 18
     },
     "2345-678-901": {
         "name": "BookB",
         "price": 200,
-        "quantity": 20
+        "quantity": 19
     },
     "3456-789-012": {
         "name": "BookC",
@@ -23,5 +23,10 @@
         "name": "bookF",
         "price": 100,
         "quantity": 23
+    },
+    "2345-678-902": {
+        "name": "Part_D",
+        "price": 200,
+        "quantity": 110
     }
 }
