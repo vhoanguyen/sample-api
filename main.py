@@ -33,6 +33,36 @@ async def login(login_info: schemas.LoginInfo, response: Response):
     response.status_code = status.HTTP_401_UNAUTHORIZED
     return {"message": "Login failed"}
 
+# Refresh token API
+@app.post("/login/refresh", status_code=200)
+async def refresh_token(response: Response, request: Request):
+    bearer_token = request.headers.get("Authorization")
+    if not bearer_token:
+        response.status_code = status.HTTP_401_UNAUTHORIZED
+        return {"message": "Unauthorized"}
+    session_token = bearer_token.split(" ")[1]
+    now = datetime.now()
+    user = jmespath.search(f"[?access_token=='{session_token}']", user_db)
+    if user:
+        print(user)
+        user = user[0]
+        token_expiry = user.get("token_expiry", None)
+        if token_expiry:
+            if token_expiry > now:
+                _user_response = schemas.LoginResponse(
+                    **{
+                        "access_token": session_token,
+                        "token_expiry": datetime.now() 
+                        + timedelta(minutes=schemas.ValidTime.THIRTY_MINUTES),
+                    }
+                )
+                user.update(_user_response)
+                return _user_response.model_dump()
+            else:
+                response.status_code = status.HTTP_401_UNAUTHORIZED
+                return {"message": "Token expired"}
+    response.status_code = status.HTTP_401_UNAUTHORIZED
+    return {"message": "Unauthorized"}
 
 # Get all parts API
 @app.get("/parts", status_code=200)
