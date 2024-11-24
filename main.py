@@ -1,5 +1,7 @@
 # main.py
 from fastapi import FastAPI, Response, Request, status
+from fastapi.middleware.cors import CORSMiddleware
+
 import uuid, json
 from datetime import datetime, timedelta
 import schemas
@@ -7,16 +9,31 @@ import jmespath
 
 ####### Global Variables ########
 app = FastAPI()
-user_db_conn = open("user_db.json", "r")
-user_db = json.loads(user_db_conn.read())
+users_db_conn = open("users_db.json", "r")
+users_db = json.loads(users_db_conn.read())
 parts_db_conn = open("parts_db.json", "r+")
 parts_db = json.loads(parts_db_conn.read())
+# carts_db_conn = open("carts_db.json", "r+")
+# carts_db = json.loads(carts_db_conn.read())
+products_db_conn = open("products_db.json", "r")
+products_db = json.loads(products_db_conn.read())
 
-
+origins = [
+    "http://localhost",
+    "http://localhost:9000",
+    "http://localhost:8000",
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # Login API
 @app.post("/login", status_code=200)
 async def login(login_info: schemas.LoginInfo, response: Response):
-    for user in user_db:
+    for user in users_db:
         if (
             user["username"] == login_info.username
             and user["password"] == login_info.password
@@ -42,7 +59,7 @@ async def refresh_token(response: Response, request: Request):
         return {"message": "Unauthorized"}
     session_token = bearer_token.split(" ")[1]
     now = datetime.now()
-    user = jmespath.search(f"[?access_token=='{session_token}']", user_db)
+    user = jmespath.search(f"[?access_token=='{session_token}']", users_db)
     if user:
         print(user)
         user = user[0]
@@ -52,7 +69,7 @@ async def refresh_token(response: Response, request: Request):
                 _user_response = schemas.LoginResponse(
                     **{
                         "access_token": session_token,
-                        "token_expiry": datetime.now() 
+                        "token_expiry": datetime.now()
                         + timedelta(minutes=schemas.ValidTime.THIRTY_MINUTES),
                     }
                 )
@@ -73,7 +90,7 @@ async def get_parts(response: Response, request: Request):
         return {"message": "Unauthorized"}
     session_token = bearer_token.split(" ")[1]
     now = datetime.now()
-    user = jmespath.search(f"[?access_token=='{session_token}']", user_db)
+    user = jmespath.search(f"[?access_token=='{session_token}']", users_db)
     if user:
         user = user[0]
         token_expiry = user.get("token_expiry", None)
@@ -96,7 +113,7 @@ async def get_part(part_id: str, response: Response, request: Request):
         return {"message": "Unauthorized"}
     session_token = bearer_token.split(" ")[1]
     now = datetime.now()
-    user = jmespath.search(f"[?access_token=='{session_token}']", user_db)
+    user = jmespath.search(f"[?access_token=='{session_token}']", users_db)
     if user:
         user = user[0]
         token_expiry = user.get("token_expiry", None)
@@ -123,7 +140,7 @@ async def add_part(
         return {"message": "Unauthorized"}
     session_token = bearer_token.split(" ")[1]
     now = datetime.now()
-    user = jmespath.search(f"[?access_token=='{session_token}']", user_db)
+    user = jmespath.search(f"[?access_token=='{session_token}']", users_db)
     if user:
         user = user[0]
         token_expiry = user.get("token_expiry", None)
@@ -155,7 +172,7 @@ async def update_part(
         return {"message": "Unauthorized"}
     session_token = bearer_token.split(" ")[1]
     now = datetime.now()
-    user = jmespath.search(f"[?access_token=='{session_token}']", user_db)
+    user = jmespath.search(f"[?access_token=='{session_token}']", users_db)
     if user:
         user = user[0]
         token_expiry = user.get("token_expiry", None)
@@ -180,6 +197,32 @@ async def update_part(
     response.status_code = status.HTTP_401_UNAUTHORIZED
     return {"message": "Unauthorized"}
 
+# Search products API
+# Search products by title and description
+@app.post("/search/{keyword}", status_code=200)
+async def search_products(keyword: str, response: Response, request: Request):
+    bearer_token = request.headers.get("Authorization")
+    if not bearer_token:
+        response.status_code = status.HTTP_401_UNAUTHORIZED
+        return {"message": "Unauthorized"}
+    session_token = bearer_token.split(" ")[1]
+    now = datetime.now()
+    user = jmespath.search(f"[?access_token=='{session_token}']", users_db)
+    if user:
+        user = user[0]
+        token_expiry = user.get("token_expiry", None)
+        if token_expiry:
+            if token_expiry > now:
+                search_results = jmespath.search(
+                    f"[?contains(title, '{keyword}') || contains(description, '{keyword}')]",
+                    products_db,
+                )
+                return search_results
+            else:
+                response.status_code = status.HTTP_401_UNAUTHORIZED
+                return {"message": "Token expired"}
+    response.status_code = status.HTTP_401_UNAUTHORIZED
+    return {"message": "Unauthorized"}
 
 # SHUTDOWN EVENT
 @app.on_event("shutdown")
@@ -191,6 +234,12 @@ def shutdown_event():
     parts_db_conn.write(json.dumps(parts_db, indent=4))
     parts_db_conn.truncate()
     parts_db_conn.close()
+
+    # print("Saving cartsdb")
+    # carts_db_conn.seek(0)
+    # carts_db_conn.write(json.dumps(carts_db, indent=4))
+    # carts_db_conn.truncate()
+    # carts_db_conn.close()
 
 if __name__ == "__main__":
     import uvicorn
