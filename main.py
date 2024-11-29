@@ -34,6 +34,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
 # Login API
 @app.post("/login", status_code=200)
 async def login(login_info: schemas.LoginInfo, response: Response):
@@ -46,47 +48,38 @@ async def login(login_info: schemas.LoginInfo, response: Response):
                 user_name=user["username"],
                 email=user["email"],
                 role=user["role"],
-                expiration=ExpiryTime.ONE_MINUTE
-                )
+                expiration=ExpiryTime.ONE_MINUTE,
+            )
             return _user_response
     response.status_code = status.HTTP_401_UNAUTHORIZED
     return {"message": "Login failed"}
 
+
 # Refresh token API
-@app.post("/login/refresh", status_code=200)
-async def refresh_token(response: Response, request: Request):
-    bearer_token = request.headers.get("Authorization")
-    if not bearer_token:
-        response.status_code = status.HTTP_401_UNAUTHORIZED
-        return {"message": "Unauthorized"}
-    session_token = bearer_token.split(" ")[1]
-    now = datetime.now()
-    user = jmespath.search(f"[?access_token=='{session_token}']", users_db)
-    if user:
-        print(user)
-        user = user[0]
-        token_expiry = user.get("token_expiry", None)
-        if token_expiry:
-            if token_expiry > now:
-                _user_response = schemas.LoginResponse(
-                    **{
-                        "access_token": session_token,
-                        "token_expiry": datetime.now()
-                        + timedelta(minutes=schemas.ValidTime.THIRTY_MINUTES),
-                    }
-                )
-                user.update(_user_response)
-                return _user_response.model_dump()
-            else:
-                response.status_code = status.HTTP_401_UNAUTHORIZED
-                return {"message": "Token expired"}
+@app.post("/login/refresh", status_code=200, dependencies=[Depends(JWTBearer())])
+async def refresh_token(
+    response: Response, request: Request, current_user=Depends(get_current_user)
+):
+    user_name = current_user.get("user_name", None)
+    email = current_user.get("email", None)
+    role = current_user.get("role", None)
+    if all([user_name, email, role]):
+        _user_response = sign_jwt(
+            user_name=user_name,
+            email=email,
+            role=role,
+            expiration=ExpiryTime.ONE_MINUTE,
+        )
+        return _user_response
     response.status_code = status.HTTP_401_UNAUTHORIZED
-    return {"message": "Unauthorized"}
+    return {"message": "Token refresh failed"}
+
 
 # Get all parts API
 @app.get("/parts", status_code=200, dependencies=[Depends(JWTBearer())])
 async def get_parts(response: Response, request: Request):
     return parts_db
+
 
 # Get part API
 @app.get("/part/{part_id}", status_code=200, dependencies=[Depends(JWTBearer())])
@@ -94,11 +87,15 @@ async def get_part(part_id: str, response: Response, request: Request):
     part = parts_db.get(part_id, None)
     return part if part else {"message": "Part not found"}
 
+
 # Add part API
 @app.put("/part/{part_id}", status_code=201, dependencies=[Depends(JWTBearer())])
 async def add_part(
-    part_id: str, part_info: schemas.PartInfo, response: Response, request: Request,
-    current_user=Depends(get_current_user)
+    part_id: str,
+    part_info: schemas.PartInfo,
+    response: Response,
+    request: Request,
+    current_user=Depends(get_current_user),
 ):
     user_name = current_user.get("user_name", None)
     current_role = jmespath.search(f"[?username=='{user_name}'].role", users_db)
@@ -115,12 +112,14 @@ async def add_part(
     return {"message": "Part added successfully"}
 
 
-
 # Update part API
 @app.patch("/part/{part_id}", status_code=200, dependencies=[Depends(JWTBearer())])
 async def update_part(
-    part_id: str, part_info: schemas.PartInfo, response: Response, request: Request,
-    current_user=Depends(get_current_user)
+    part_id: str,
+    part_info: schemas.PartInfo,
+    response: Response,
+    request: Request,
+    current_user=Depends(get_current_user),
 ):
     user_name = current_user.get("user_name", None)
     current_role = jmespath.search(f"[?username=='{user_name}'].role", users_db)
@@ -147,6 +146,7 @@ async def search_products(keyword: str, response: Response, request: Request):
     )
     return search_results
 
+
 # SHUTDOWN EVENT
 @app.on_event("shutdown")
 def shutdown_event():
@@ -164,7 +164,14 @@ def shutdown_event():
     # carts_db_conn.truncate()
     # carts_db_conn.close()
 
+
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="127.0.0.1", port=8000, ssl_certfile="server.crt", ssl_keyfile="server.key")
+    uvicorn.run(
+        app,
+        host="127.0.0.1",
+        port=8000,
+        ssl_certfile="server.crt",
+        ssl_keyfile="server.key",
+    )
