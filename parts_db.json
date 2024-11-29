@@ -28,5 +28,10 @@
         "name": "Part_D",
         "price": 200,
         "quantity": 110
+    },
+    "3456-789-0123": {
+        "name": "BookB",
+        "price": 200,
+        "quantity": 19
     }
 }

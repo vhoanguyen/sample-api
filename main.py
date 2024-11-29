@@ -1,11 +1,15 @@
 # main.py
-from fastapi import FastAPI, Response, Request, status
+from fastapi import FastAPI, Response, Request, status, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
 from fastapi.middleware.cors import CORSMiddleware
+from lib.app_jwt import JWTBearer, sign_jwt, ExpiryTime, get_current_user
 
 import uuid, json
 from datetime import datetime, timedelta
 import schemas
 import jmespath
+
 
 ####### Global Variables ########
 app = FastAPI()
@@ -38,15 +42,13 @@ async def login(login_info: schemas.LoginInfo, response: Response):
             user["username"] == login_info.username
             and user["password"] == login_info.password
         ):
-            _user_response = schemas.LoginResponse(
-                **{
-                    "access_token": str(uuid.uuid4()),
-                    "token_expiry": datetime.now()
-                    + timedelta(minutes=schemas.ValidTime.THIRTY_MINUTES),
-                }
-            )
-            user.update(_user_response)
-            return _user_response.model_dump()
+            _user_response = sign_jwt(
+                user_name=user["username"],
+                email=user["email"],
+                role=user["role"],
+                expiration=ExpiryTime.ONE_MINUTE
+                )
+            return _user_response
     response.status_code = status.HTTP_401_UNAUTHORIZED
     return {"message": "Login failed"}
 
@@ -82,147 +84,68 @@ async def refresh_token(response: Response, request: Request):
     return {"message": "Unauthorized"}
 
 # Get all parts API
-@app.get("/parts", status_code=200)
+@app.get("/parts", status_code=200, dependencies=[Depends(JWTBearer())])
 async def get_parts(response: Response, request: Request):
-    bearer_token = request.headers.get("Authorization")
-    if not bearer_token:
-        response.status_code = status.HTTP_401_UNAUTHORIZED
-        return {"message": "Unauthorized"}
-    session_token = bearer_token.split(" ")[1]
-    now = datetime.now()
-    user = jmespath.search(f"[?access_token=='{session_token}']", users_db)
-    if user:
-        user = user[0]
-        token_expiry = user.get("token_expiry", None)
-        if token_expiry:
-            if token_expiry > now:
-                return parts_db
-            else:
-                response.status_code = status.HTTP_401_UNAUTHORIZED
-                return {"message": "Token expired"}
-    response.status_code = status.HTTP_401_UNAUTHORIZED
-    return {"message": "Unauthorized"}
-
+    return parts_db
 
 # Get part API
-@app.get("/part/{part_id}", status_code=200)
+@app.get("/part/{part_id}", status_code=200, dependencies=[Depends(JWTBearer())])
 async def get_part(part_id: str, response: Response, request: Request):
-    bearer_token = request.headers.get("Authorization")
-    if not bearer_token:
-        response.status_code = status.HTTP_401_UNAUTHORIZED
-        return {"message": "Unauthorized"}
-    session_token = bearer_token.split(" ")[1]
-    now = datetime.now()
-    user = jmespath.search(f"[?access_token=='{session_token}']", users_db)
-    if user:
-        user = user[0]
-        token_expiry = user.get("token_expiry", None)
-        if token_expiry:
-            if token_expiry > now:
-                part = parts_db.get(part_id, None)
-                return part if part else {"message": "Part not found"}
-            else:
-                response.status_code = status.HTTP_401_UNAUTHORIZED
-                return {"message": "Token expired"}
-
-    response.status_code = status.HTTP_401_UNAUTHORIZED
-    return {"message": "Unauthorized"}
-
+    part = parts_db.get(part_id, None)
+    return part if part else {"message": "Part not found"}
 
 # Add part API
-@app.put("/part/{part_id}", status_code=201)
+@app.put("/part/{part_id}", status_code=201, dependencies=[Depends(JWTBearer())])
 async def add_part(
-    part_id: str, part_info: schemas.PartInfo, response: Response, request: Request
+    part_id: str, part_info: schemas.PartInfo, response: Response, request: Request,
+    current_user=Depends(get_current_user)
 ):
-    bearer_token = request.headers.get("Authorization")
-    if not bearer_token:
+    user_name = current_user.get("user_name", None)
+    current_role = jmespath.search(f"[?username=='{user_name}'].role", users_db)
+    if current_role and current_role[0] == schemas.Role.ADMIN:
+        if part_id not in parts_db:
+            parts_db[part_id] = part_info.model_dump()
+            return {"message": "Part added successfully"}
+        else:
+            response.status_code = status.HTTP_409_CONFLICT
+            return {"message": "Part already exists"}
+    else:
         response.status_code = status.HTTP_401_UNAUTHORIZED
         return {"message": "Unauthorized"}
-    session_token = bearer_token.split(" ")[1]
-    now = datetime.now()
-    user = jmespath.search(f"[?access_token=='{session_token}']", users_db)
-    if user:
-        user = user[0]
-        token_expiry = user.get("token_expiry", None)
-        user_role = user.get("role", None)
-        if token_expiry:
-            if token_expiry > now:
-                if user_role == schemas.Role.ADMIN:
-                    parts_db[part_id] = part_info.model_dump()
-                    return {"message": "Part added successfully"}
-                else:
-                    response.status_code = status.HTTP_401_UNAUTHORIZED
-                    return {"message": "Unauthorized"}
-            else:
-                response.status_code = status.HTTP_401_UNAUTHORIZED
-                return {"message": "Token expired"}
+    return {"message": "Part added successfully"}
 
-    response.status_code = status.HTTP_401_UNAUTHORIZED
-    return {"message": "Unauthorized"}
 
 
 # Update part API
-@app.patch("/part/{part_id}", status_code=200)
+@app.patch("/part/{part_id}", status_code=200, dependencies=[Depends(JWTBearer())])
 async def update_part(
-    part_id: str, part_info: schemas.PartInfo, response: Response, request: Request
+    part_id: str, part_info: schemas.PartInfo, response: Response, request: Request,
+    current_user=Depends(get_current_user)
 ):
-    bearer_token = request.headers.get("Authorization")
-    if not bearer_token:
+    user_name = current_user.get("user_name", None)
+    current_role = jmespath.search(f"[?username=='{user_name}'].role", users_db)
+    if current_role and current_role[0] == schemas.Role.ADMIN:
+        part = parts_db.get(part_id, None)
+        if part:
+            parts_db[part_id] = part_info.model_dump()
+            return {"message": "Part updated successfully"}
+        else:
+            response.status_code = status.HTTP_404_NOT_FOUND
+            return {"message": "Part not found"}
+    else:
         response.status_code = status.HTTP_401_UNAUTHORIZED
         return {"message": "Unauthorized"}
-    session_token = bearer_token.split(" ")[1]
-    now = datetime.now()
-    user = jmespath.search(f"[?access_token=='{session_token}']", users_db)
-    if user:
-        user = user[0]
-        token_expiry = user.get("token_expiry", None)
-        user_role = user.get("role", None)
-        if token_expiry:
-            if token_expiry > now:
-                if user_role == schemas.Role.ADMIN:
-                    part = parts_db.get(part_id, None)
-                    if part:
-                        parts_db[part_id] = part_info.model_dump()
-                        return {"message": "Part updated successfully"}
-                    else:
-                        response.status_code = status.HTTP_404_NOT_FOUND
-                        return {"message": "Part not found"}
-                else:
-                    response.status_code = status.HTTP_401_UNAUTHORIZED
-                    return {"message": "Unauthorized"}
-            else:
-                response.status_code = status.HTTP_401_UNAUTHORIZED
-                return {"message": "Token expired"}
 
-    response.status_code = status.HTTP_401_UNAUTHORIZED
-    return {"message": "Unauthorized"}
 
 # Search products API
 # Search products by title and description
-@app.post("/search/{keyword}", status_code=200)
+@app.post("/search/{keyword}", status_code=200, dependencies=[Depends(JWTBearer())])
 async def search_products(keyword: str, response: Response, request: Request):
-    bearer_token = request.headers.get("Authorization")
-    if not bearer_token:
-        response.status_code = status.HTTP_401_UNAUTHORIZED
-        return {"message": "Unauthorized"}
-    session_token = bearer_token.split(" ")[1]
-    now = datetime.now()
-    user = jmespath.search(f"[?access_token=='{session_token}']", users_db)
-    if user:
-        user = user[0]
-        token_expiry = user.get("token_expiry", None)
-        if token_expiry:
-            if token_expiry > now:
-                search_results = jmespath.search(
-                    f"[?contains(title, '{keyword}') || contains(description, '{keyword}')]",
-                    products_db,
-                )
-                return search_results
-            else:
-                response.status_code = status.HTTP_401_UNAUTHORIZED
-                return {"message": "Token expired"}
-    response.status_code = status.HTTP_401_UNAUTHORIZED
-    return {"message": "Unauthorized"}
+    search_results = jmespath.search(
+        f"[?contains(title, '{keyword}') || contains(description, '{keyword}')]",
+        products_db,
+    )
+    return search_results
 
 # SHUTDOWN EVENT
 @app.on_event("shutdown")
